@@ -10,7 +10,6 @@ from googleapiclient.errors import HttpError
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 
 API_KEY = os.getenv("GOOGLE_CALENDAR_API")
-print(API_KEY)
 
 def main():
     credentials = None
@@ -19,7 +18,7 @@ def main():
     
     #기존의 발급받은 토큰 확인
     if os.path.exists('token.json'):
-        credentials = Credentials.from_authorized_user_file('token.json', SCOPES)
+        credentials = Credentials.from_authorized_user_file('secret/token.json', SCOPES)
     
     #출입증의 유효성 검사    
     if not credentials or not credentials.valid:
@@ -30,7 +29,7 @@ def main():
         
         #token이 없는 최초 실행의 경우, 또는 유효하지 않고 갱신도 불가능한 경우
         else:
-            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+            flow = InstalledAppFlow.from_client_secrets_file('secret/google_calendar_credentials.json', SCOPES)
             credentials = flow.run_local_server(port=0)
             
         with open('token.json', 'w') as token:
@@ -40,7 +39,29 @@ def main():
     try:
         service = build('calendar', 'v3', credentials=credentials)
         
-        # 오늘 날짜와 시간
+        event = {
+            "summary": "My Python Event",
+            "location": "Somewhere",
+            "description": "This is a test event created using Python.",
+            "colorId": 6,
+            "start": {
+                "dateTime": "2025-10-06T09:00:00",
+                "timeZone": "America/New_York"
+            },
+            "end": {
+                "dateTime": "2025-10-06T17:00:00",
+                "timeZone": "America/New_York"
+            },
+            "recurrence": [
+                "RRULE:FREQ=DAILY;COUNT=1"
+            ],
+        }
+        
+        event = service.events().insert(calendarId='primary', body=event).execute()
+        
+        print(f"Event created: {event.get('htmlLink')}")
+        
+        """ # 오늘 날짜와 시간
         now = dt.datetime.now().isoformat() + 'Z'
         print('Getting the upcoming 10 events')
         
@@ -53,7 +74,10 @@ def main():
         
         for event in events:
             start = event['start'].get('dateTime', event['start'].get('date'))
-            print(start, event['summary'])
+            print(start, event['summary'])"""
             
     except HttpError as error:
         print('An error occurred: %s' % error)
+        
+if __name__ == '__main__':
+    main()
