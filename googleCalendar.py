@@ -14,11 +14,11 @@ API_KEY = os.getenv("GOOGLE_CALENDAR_API")
 def main():
     credentials = None
     
-    ### 구글 API에 접근하기 위한 사용자 인증 및 로그인 상태 관리 코드 (자동 로그인)
+    ###구글 API에 접근하기 위한 사용자 인증 및 로그인 상태 관리 코드 (자동 로그인)
     
     #기존의 발급받은 토큰 확인
     if os.path.exists('token.json'):
-        credentials = Credentials.from_authorized_user_file('secret/token.json', SCOPES)
+        credentials = Credentials.from_authorized_user_file('token.json', SCOPES)
     
     #출입증의 유효성 검사    
     if not credentials or not credentials.valid:
@@ -45,11 +45,11 @@ def main():
             "description": "This is a test event created using Python.",
             "colorId": 6,
             "start": {
-                "dateTime": "2025-10-06T09:00:00",
+                "dateTime": "2025-10-28T09:00:00",
                 "timeZone": "America/New_York"
             },
             "end": {
-                "dateTime": "2025-10-06T17:00:00",
+                "dateTime": "2025-10-28T17:00:00",
                 "timeZone": "America/New_York"
             },
             "recurrence": [
