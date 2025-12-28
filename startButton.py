@@ -116,7 +116,6 @@ def get_parsed_events(file_path, file_type):
 def googleCalendar(response):
     print(response)
     
-    
     credentials = None
     
     ###구글 API에 접근하기 위한 사용자 인증 및 로그인 상태 관리 코드 (자동 로그인)
@@ -134,7 +133,7 @@ def googleCalendar(response):
         
         #token이 없는 최초 실행의 경우, 또는 유효하지 않고 갱신도 불가능한 경우
         else:
-            flow = InstalledAppFlow.from_client_secrets_file('secret/google_calendar_credentials.json', SCOPES)
+            flow = InstalledAppFlow.from_client_secrets_file('./demo/secret/google_calendar_credentials.json', SCOPES)
             credentials = flow.run_local_server(port=0)
             
         with open('token.json', 'w') as token:
@@ -162,8 +161,8 @@ def googleCalendar(response):
 
 if __name__ == "__main__":
     # 파일 경로 지정
-    pdf_path = "C:/Users/hocha/OneDrive/바탕 화면/첫단추/pdfs/161syllabus.pdf"  # 읽고 싶은 파일 경로로 변경
-    image_path = "C:/Users/hocha/OneDrive/바탕 화면/첫단추/images/cse310_1.png" # 이미지 파일 경로
+    pdf_path = "C:/firstButton/demo/pdfs/cse300.pdf"  # 읽고 싶은 파일 경로로 변경
+    image_path = "C:/firstButton/demo/images/cse310_1.png" # 이미지 파일 경로
     
     # 사용자 인풋 받기
     user_input = input("PDF 파일을 읽으려면 '1', 이미지 파일을 읽으려면 '2'를 입력하세요: ")
