@@ -69,6 +69,22 @@ def image_file_reader(image_path):
     response = model.generate_content([img_file, img_prompt])
     return response.text
 
+def integrated_file_reader(file_path, file_type):
+    try:
+        # Pillow를 사용하여 이미지 파일 열기
+        if ext == ".jpg" or ext == ".jpeg" or ext == ".png":
+            processed_file = Image.open(file_path)
+        elif ext == ".pdf":
+            processed_file = genai.upload_file(path=file_path, display_name="syllabus PDF")
+            
+    except FileNotFoundError:
+        print(f"오류: '{file_path}' 경로에서 파일을 찾을 수 없습니다.")
+        exit()
+        
+    file_prompt = prompt.format(file=file_type)
+    response = model.generate_content([processed_file, file_prompt])
+    return response.text
+
 
 #응답 json 형태 파싱
 def parse_response_to_events(response_text):
@@ -96,6 +112,7 @@ def parse_response_to_events(response_text):
     if isinstance(data, list):
         return data
     raise ValueError("Parsed JSON is not an object or list of objects")
+
 
 # google Calendar에 넣기 위한 이벤트 파싱 함수
 def get_parsed_events(file_path, file_type):
@@ -161,9 +178,12 @@ def googleCalendar(response):
 
 if __name__ == "__main__":
     # 파일 경로 지정
-    pdf_path = "C:/firstButton/demo/pdfs/cse300.pdf"  # 읽고 싶은 파일 경로로 변경
-    image_path = "C:/firstButton/demo/images/cse310_1.png" # 이미지 파일 경로
+    #pdf_path = "C:/firstButton/demo/pdfs/cse300.pdf"  
+    #image_path = "C:/firstButton/demo/images/cse310_1.png" 
     
+    file_path = "C:/firstButton/demo/images/cse310_2.png" # 실전에서는 사용자가 파일을 직접 고르는 것으로 할것.
+    
+    """
     # 사용자 인풋 받기
     user_input = input("PDF 파일을 읽으려면 '1', 이미지 파일을 읽으려면 '2'를 입력하세요: ")
     if user_input == '1' or user_input == '2':
@@ -173,7 +193,15 @@ if __name__ == "__main__":
     else:
         print("잘못된 입력입니다. '1' 또는 '2'를 입력하세요.")
         exit()
+    """
     
-    googleCalendar(response)
+    # 파일 확장자에 따라 파일 타입 결정
+    _, ext = os.path.splitext(file_path)
+    ext = ext.lower()
+    
+    response = integrated_file_reader(file_path, ext) #file reader를 통해 모델이 생성한 응답 받기
+    events_json = parse_response_to_events(response) #응답을 구글 캘린더 json 형식에 맞게 파싱
+    
+    googleCalendar(events_json)
         
         
