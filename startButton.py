@@ -7,6 +7,9 @@ import json
 import datetime as dt
 import os.path
 
+from tkinter import Tk
+from tkinter.filedialog import askopenfilenames
+
 from google.auth.transport.requests import Request 
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -38,13 +41,13 @@ prompt = "Summarize all the academic schedules from this {file} file and organiz
                 8. If a particular schedule does not have such a description, make the description on your own within 3 ~ 4 words. \
                 9. The output must be a valid JSON format only, without any additional words." 
 
-
+#파일 읽고 응답 생성 (이미 json 형태이기는 함)
 def integrated_file_reader(file_path, file_type):
     try:
         # Pillow를 사용하여 이미지 파일 열기
-        if ext == ".jpg" or ext == ".jpeg" or ext == ".png":
+        if file_type == ".jpg" or file_type == ".jpeg" or file_type == ".png":
             processed_file = Image.open(file_path)
-        elif ext == ".pdf":
+        elif file_type == ".pdf":
             processed_file = genai.upload_file(path=file_path, display_name="syllabus PDF")
             
     except FileNotFoundError:
@@ -55,8 +58,7 @@ def integrated_file_reader(file_path, file_type):
     response = model.generate_content([processed_file, file_prompt])
     return response.text
 
-
-#응답 json 형태 파싱
+#생성된 응답 json 형태 파싱 (정리만 하는 용도)
 def parse_response_to_events(response_text):
     if not response_text:
         raise ValueError("Empty response_text")
@@ -82,7 +84,7 @@ def parse_response_to_events(response_text):
         return data
     raise ValueError("Parsed JSON is not an object or list of objects")
 
-
+#구글 캘린더에 이벤트 추가
 def googleCalendar(response):
     print(response)
     
@@ -125,20 +127,48 @@ def googleCalendar(response):
     except HttpError as error:
         print('An error occurred: %s' % error)
 
+def file_selector():
+    allowed = {".jpg", ".jpeg", ".png", ".pdf"}
+    root = Tk()
+    root.withdraw()
 
+    file_paths = askopenfilenames(title="Select files", filetypes=[("Image & PDF", "*.*")])
+
+    files = list(file_paths)
+
+    # 확장자 검증
+    invalid_files = [
+        f for f in files
+        if os.path.splitext(f)[1].lower() not in allowed
+    ]
+
+    if invalid_files:
+        raise ValueError(f"허용되지 않은 파일 형식이 포함되어 있습니다:\n" + "\n".join(invalid_files))
+
+    return files
 
 if __name__ == "__main__":
     # 파일 경로 지정
+    file_paths = file_selector()
+    print(file_paths)
     
-    file_path = "C:/firstButton/demo/images/cse310_2.png" # 실전에서는 사용자가 파일을 직접 고르는 것으로 할것.
-    
-    # 파일 확장자에 따라 파일 타입 결정
-    _, ext = os.path.splitext(file_path)
-    ext = ext.lower()
-    
-    response = integrated_file_reader(file_path, ext) #file reader를 통해 모델이 생성한 응답 받기
-    events_json = parse_response_to_events(response) #응답을 구글 캘린더 json 형식에 맞게 파싱
-    
-    googleCalendar(events_json)
+    if not file_paths:
+        print("No files selected. Exiting.")
+        exit()
         
+    #for문으로 아래 모든 과정을 모든 파일들에 대해 각각 반복, 그리고 git에 커밋하기
+    # 파일 확장자에 따라 파일 타입 결정
+    for file_path in file_paths:
+        try:
+            _, ext = os.path.splitext(file_path)
+            ext = ext.lower()
+            
+            response = integrated_file_reader(file_path, ext) #file reader를 통해 모델이 생성한 응답 받기
+            events_json = parse_response_to_events(response) #응답을 구글 캘린더 json 형식에 맞게 파싱
+            
+            googleCalendar(events_json)
+            
+        except Exception as e:
+            print(f"Error processing file '{file_path}': {e}")
+            continue  
         
