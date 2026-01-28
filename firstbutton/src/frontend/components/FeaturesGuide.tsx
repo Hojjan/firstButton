@@ -2,7 +2,6 @@ import { ArrowLeft, Upload, FileText, Image as ImageIcon, Calendar, CheckCircle2
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
-import { ImageWithFallback } from "./figma/ImageWithFallback";
 import calendarImage from "../assets/calendar.jpg";
 
 interface FeaturesGuideProps {
