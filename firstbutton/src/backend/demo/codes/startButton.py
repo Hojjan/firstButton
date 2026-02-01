@@ -1,37 +1,24 @@
 import os
 import google.generativeai as genai
-from PIL import Image # 이미지 처리를 위한 Pillow 라이브러리
-import pandas as pd
+from PIL import Image
 import json
-
-import datetime as dt
-import os.path
-
-from tkinter import Tk
-from tkinter.filedialog import askopenfilenames
-
-from google.auth.transport.requests import Request 
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
-
-import re
 import hashlib
 
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from dotenv import load_dotenv
 
+load_dotenv()
+
+# 1. 설정 및 모델 로드
 SCOPES = ['https://www.googleapis.com/auth/calendar']
+GEMINI_API_KEY = os.getenv("GOOGLE_GEMINI_API")
 
-API_KEY = os.getenv("GOOGLE_CALENDAR_API")
-API_KEY = os.getenv("GOOGLE_GEMINI_API")
-
-# 키 설정
-genai.configure(api_key=API_KEY)
-
-# 모델 선택
+genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel('gemini-flash-latest')
 
-prompt = "Summarize all the academic schedules from this {file} file and organize them into a JSON format in English. \
+# AI 프롬프트 설정
+PROMPT_TEMPLATE = "Summarize all the academic schedules from this {file} file and organize them into a JSON format in English. \
                 However, make sure to strictly comply with the following requirements: \
                 1. Things to be excluded: TA office hour, professor office hour, assignment release date. \
                 2. Things to be included: midterm, final exam, project deadline, assignment submission deadline, no class, holiday, semester break.\
@@ -47,173 +34,75 @@ prompt = "Summarize all the academic schedules from this {file} file and organiz
                 10. If the schedule is related to one of these categories: holiday, semester break, no class, then choose one of them and include it in the description. \
                 11. The output must be a valid JSON format only, without any additional words." 
 
-#파일 읽고 응답 생성 (이미 json 형태이기는 함)
+# 2. 핵심 로직 함수들
+
 def integrated_file_reader(file_path, file_type, file_name, color):
+    """파일을 읽어 Gemini AI를 통해 일정 JSON 텍스트 생성"""
     try:
-        # Pillow를 사용하여 이미지 파일 열기
-        if file_type == ".jpg" or file_type == ".jpeg" or file_type == ".png":
+        if file_type in [".jpg", ".jpeg", ".png"]:
             processed_file = Image.open(file_path)
         elif file_type == ".pdf":
             processed_file = genai.upload_file(path=file_path, display_name="syllabus PDF")
+        else:
+            raise ValueError(f"지원하지 않는 파일 형식입니다: {file_type}")
             
     except FileNotFoundError:
-        print(f"오류: '{file_path}' 경로에서 파일을 찾을 수 없습니다.")
-        exit()
+        return f"오류: '{file_path}' 경로에서 파일을 찾을 수 없습니다."
         
-    file_prompt = prompt.format(file=file_type, name=file_name, colorId=color)
+    file_prompt = PROMPT_TEMPLATE.format(file=file_type, name=file_name, colorId=color)
     response = model.generate_content([processed_file, file_prompt])
     return response.text
 
-#생성된 응답 json 형태 파싱 (정리만 하는 용도)
 def parse_response_to_events(response_text):
+    """AI의 텍스트 응답에서 JSON 배열을 추출하여 파싱"""
     if not response_text:
-        raise ValueError("Empty response_text")
+        raise ValueError("AI 응답이 비어있습니다.")
     
     start = response_text.find('[')
     end = response_text.rfind(']')
     if start == -1 or end == -1 or end <= start:
-        #print("JSON array '[]' not found in response. preview:", repr(response_text)[:1000])
-        return 0
+        return []
 
     candidate = response_text[start:end+1]
+    data = json.loads(candidate)
     
-    try:
-        data = json.loads(candidate)
-    except Exception as e2:
-        print("Failed to parse extracted JSON array. candidate preview:", repr(candidate)[:1000])
-        raise ValueError("Failed to parse JSON array from model response") from e2
-    
-    # Ensure we always return a list of event dicts
-    if isinstance(data, dict):
-        return [data]
-    if isinstance(data, list):
-        return data
-    raise ValueError("Parsed JSON is not an object or list of objects")
+    return data if isinstance(data, list) else [data]
 
-#구글 캘린더에 이벤트 추가
-def googleCalendar(response):
-    #print(response)
-    
-    credentials = None
-    
-    ###구글 API에 접근하기 위한 사용자 인증 및 로그인 상태 관리 코드 (자동 로그인)
-
-    #기존의 발급받은 토큰 확인
-    if os.path.exists('token.json'):
-        credentials = Credentials.from_authorized_user_file('token.json', SCOPES)
-    
-    #출입증의 유효성 검사    
-    if not credentials or not credentials.valid:
-        
-        #만료되었을시, 갱신 토큰 유무 확인 후 갱신
-        if credentials and credentials.expired and credentials.refresh_token:
-            credentials.refresh(Request())
-        
-        #token이 없는 최초 실행의 경우, 또는 유효하지 않고 갱신도 불가능한 경우
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file('C:/firstButton/firstbutton/src/backend/demo/secret/google_calendar_credentials.json', SCOPES)
-            credentials = flow.run_local_server(port=0)
-            
-        with open('token.json', 'w') as token:
-            token.write(credentials.to_json())
-    
+def google_calendar(events_list, credentials):
+    if not credentials:
+        print("❌ 인증 정보가 없습니다. 일정을 등록할 수 없습니다.")
+        return
             
     try:
         service = build('calendar', 'v3', credentials=credentials)
         
-        for event_data in response:
-            #print(event_data)
-            #print()
+        for event_data in events_list:
             try:
-                # 단일 이벤트 딕셔너리(event_data)를 body에 전달
                 if is_common_event(event_data):
-                    #print(1234)
-                    eid = make_common_event_id(event_data)
-                    event_body = dict(event_data)
-                    event_body["id"] = eid
-                    #print(event_body)
-                    
-                    event = service.events().insert(calendarId="primary", body=event_body).execute()
-                else:
-                    event = service.events().insert(calendarId="primary", body=event_data).execute()
+                    event_data["id"] = make_common_event_id(event_data)
                 
-                print(f"✅ Event created successfully: {event.get('htmlLink')}")
+                service.events().insert(calendarId="primary", body=event_data).execute()
+                print(f"✅ 일정 등록 완료: {event_data.get('summary')}")
                 
-            except HttpError as inner_error:
-                if inner_error.resp.status == 409 and is_common_event(event_data):
-                    print(f"Skipped duplicate common event: {event_data.get('summary')}")
-                    continue
-                
+            except HttpError as e:
+                if e.resp.status == 409:
+                    print(f"중복 일정 건너뜀: {event_data.get('summary')}")
                 else: 
-                    print(f"An error occurred while creating event '{event_data.get('summary')}': {inner_error}")
+                    print(f"등록 오류: {event_data.get('summary')} - {e}")
         
     except HttpError as error:
-        print('An error occurred: %s' % error)
+        print(f"구글 서비스 연결 오류: {error}")
 
-def file_selector():
-    allowed = {".jpg", ".jpeg", ".png", ".pdf"}
-    root = Tk()
-    root.withdraw()
-
-    file_paths = askopenfilenames(title="Select files", filetypes=[("Image & PDF", "*.*")])
-
-    files = list(file_paths)
-
-    # 확장자 검증
-    invalid_files = [
-        f for f in files
-        if os.path.splitext(f)[1].lower() not in allowed
-    ]
-
-    if invalid_files:
-        raise ValueError(f"허용되지 않은 파일 형식이 포함되어 있습니다:\n" + "\n".join(invalid_files))
-
-    return files
-
-def is_common_event(event_data): #여기서 종류에 따라 event ID 부여해서 리턴
+def is_common_event(event_data):
+    """공통 일정(휴강, 방학 등)인지 확인하여 중복 방지 ID 부여 대상 선별"""
     description = event_data.get("description", "").lower()
-
     keywords = ["holiday", "break", "no class"] 
-
-    return keywords[0] in description or keywords[1] in description or keywords[2] in description
+    return any(kw in description for kw in keywords)
 
 def make_common_event_id(event_data):
+    """공통 일정에 대한 고유 해시 ID 생성 (중복 등록 방지)"""
     start = event_data["start"]["date"][4:].replace("-", "")
     end = event_data["end"]["date"][4:].replace("-", "")
-    
     summary_title = (event_data.get("summary", "").lower()).replace(" ", "")
     raw_id = f"{summary_title}{start}{end}"
-    
-    safe_id = hashlib.md5(raw_id.encode()).hexdigest()
-    
-    return safe_id
-
-if __name__ == "__main__":
-    # 파일 경로 지정
-    file_paths = file_selector()
-    print(file_paths)
-    
-    if not file_paths:
-        print("No files selected. Exiting.")
-        exit()
-    
-    for file in file_paths:
-        color = input("Choose a color for the events (e.g., 1-11): ") #파일별 색 정하기
-        
-    
-    # 파일 확장자에 따라 파일 타입 결정
-    for file_path in file_paths:
-        try:
-            file_name_with_ext = os.path.basename(file_path)
-            file_name, ext = os.path.splitext(file_name_with_ext)
-            ext = ext.lower()
-            
-            response = integrated_file_reader(file_path, ext, file_name, color) #file reader를 통해 모델이 생성한 응답 받기
-            events_json = parse_response_to_events(response) #응답을 구글 캘린더 json 형식에 맞게 파싱
-                
-            googleCalendar(events_json)
-            
-        except Exception as e:
-            print(f"Error processing file '{file_path}': {e}")
-            continue  
-        
+    return hashlib.md5(raw_id.encode()).hexdigest()

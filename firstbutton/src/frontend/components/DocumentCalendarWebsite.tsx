@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Calendar, FileText, Image, CheckCircle, ArrowRight, X, Trash2, Zap } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -20,11 +20,54 @@ interface SelectedFile {
 
 export function DocumentCalendarWebsite({ highlightElement }: DocumentCalendarWebsiteProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  // 선택된 파일들의 목록 상태 관리
   const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
-  // 모달(팝업창) 표시 여부
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userName, setUserName] = useState("");
+
+
+  // 브라우저 쿠키에 user_email이 있는지 확인 (HttpOnly가 아닐 경우)
+  // 가장 확실한 방법은 백엔드에 '상태 확인 API'를 하나 만드는 것이지만, 
+  // 우선은 간단하게 '성공적으로 로그인 후 돌아왔을 때'를 가정해 처리합니다.
+  useEffect(() => {
+  const checkLogin = () => {
+    const cookies = document.cookie.split('; ');
+    const emailCookie = cookies.find(row => row.startsWith('user_email='));
+
+    if (emailCookie) {
+      // 쿠키 값 추출 및 디코딩
+      const email = decodeURIComponent(emailCookie.split('=')[1]);
+      const id = email.split('@')[0];
+      
+      setUserName(id);
+      setIsLoggedIn(true);
+      console.log("로그인 성공:", id);
+    } else {
+      setIsLoggedIn(false);
+      setUserName("");
+    }
+  };
+
+    checkLogin();
+  }, []); // 페이지 로드 시 한 번만 실행
+
+  
+
+  const handleLogin = async () => {
+    try {
+      // 백엔드에서 구글 로그인 URL을 받아옵니다.
+      const response = await fetch("http://localhost:8000/api/auth/login");
+      const data = await response.json();
+      
+      // 구글 로그인 페이지로 이동 (리다이렉트)
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (error) {
+      console.error("로그인 URL을 가져오는데 실패했습니다:", error);
+      alert("서버와 통신할 수 없습니다.");
+    }
+  };
 
   // 1. 파일 선택 시 실행 (모달 열기)
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -70,16 +113,22 @@ export function DocumentCalendarWebsite({ highlightElement }: DocumentCalendarWe
       // 여러 파일을 순서대로 전송 (또는 백엔드가 다중 파일을 지원하면 한 번에 전송)
       for (const item of selectedFiles) {
         const formData = new FormData();
-        formData.append("file", item.file);
-        formData.append("color", item.color);
+        formData.append("uploaded_file", item.file);
+        formData.append("event_color", item.color);
 
-        const response = await fetch("/api/schedule/upload", {
+        const response = await fetch("http://localhost:8000/api/schedule/upload", {
           method: "POST",
           body: formData,
+          credentials: "include",
         });
         
+        if (response.status === 401) {
+          alert("로그인이 필요합니다. 먼저 로그인해주세요!");
+          return;
+        }
+
         if (!response.ok) {
-           throw new Error(`${item.file.name} 처리 실패`);
+          throw new Error(`${item.file.name} 처리 실패`);
         }
       }
 
@@ -94,16 +143,18 @@ export function DocumentCalendarWebsite({ highlightElement }: DocumentCalendarWe
   };
 
   const handleUploadClick = () => {
+    if (!isLoggedIn) {
+    alert("먼저 로그인을 해주세요!");
+    handleLogin(); // 로그인창으로 바로 보냄
+    return;
+    }
     fileInputRef.current?.click();
   };
 
   return (
     <div className="min-h-screen bg-background relative">
       {/* Header */}
-      <header 
-        className={`border-b px-6 py-4 ${highlightElement === 'header' ? 'relative z-10' : ''}`}
-        data-tutorial="header"
-      >
+      <header className={`border-b px-6 py-4 ${highlightElement === 'header' ? 'relative z-10' : ''}`} data-tutorial="header">
         <div className="flex items-center justify-between max-w-7xl mx-auto">
           <div className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">
@@ -112,9 +163,33 @@ export function DocumentCalendarWebsite({ highlightElement }: DocumentCalendarWe
             <h1 className="text-2xl font-bold">첫단추</h1>
           </div>
           
-          <div className="flex items-center space-x-2">
-            <Button variant="outline" data-tutorial="login">로그인</Button>
-            <Button data-tutorial="signup">시작하기</Button>
+          <div className="flex items-center">
+            {isLoggedIn ? (
+            /* 로그인 상태일 때: 인사말 표시 */
+            <div className="flex items-center space-x-4">
+              <span className="text-sm font-medium text-slate-700">
+                <strong className="text-orange-600">{userName}</strong>님, 안녕하세요!
+              </span>
+              {/* 필요하다면 로그아웃 버튼을 작게 추가할 수 있습니다 */}
+              <Button 
+                  className="bg-black text-white hover:bg-gray-800 px-4 h-9 transition-colors font-medium rounded-md text-xs"
+                  onClick={() => {
+                    document.cookie = "user_email=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+                    window.location.reload();
+                  }}
+                >
+                Sign Out
+              </Button>
+            </div>
+          ) : (
+            /* 로그아웃 상태일 때: 시작하기 버튼 표시 */
+            <Button 
+              className="bg-black text-white hover:bg-gray-800 px-6 h-10 transition-colors font-medium rounded-md"
+              onClick={handleLogin}
+            >
+              시작하기
+            </Button>
+          )}
           </div>
         </div>
       </header>
