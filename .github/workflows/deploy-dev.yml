@@ -8,7 +8,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: SSH and update code
+      - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -18,13 +18,29 @@ jobs:
             set -e
             APP_DIR="${{ secrets.EC2_APP_DIR }}"
 
-            # first time: clone repo
+            # First time: init repo (.env 등 기존 파일 보존)
             if [ ! -d "$APP_DIR/.git" ]; then
               mkdir -p "$APP_DIR"
-              git clone -b develop https://github.com/first-button/first_button.git "$APP_DIR"
+              cd "$APP_DIR"
+              git init
+              git remote add origin https://github.com/first-button/first_button.git
+              git fetch origin develop
+              git checkout -b develop origin/develop
             fi
 
             cd "$APP_DIR"
             git pull origin develop
 
-            echo "✅ DEPLOY OK: $(git rev-parse --short HEAD)"
+            # .env를 Day_One/으로 복사 (docker-compose가 읽을 수 있도록)
+            cp .env Day_One/.env 2>/dev/null || true
+
+            # Build and deploy with Docker Compose
+            cd Day_One
+            docker compose down
+            docker compose up --build -d
+
+            # Wait and verify
+            sleep 10
+            docker compose ps
+
+            echo "DEPLOY OK: $(git rev-parse --short HEAD)"

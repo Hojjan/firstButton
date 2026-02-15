@@ -1,2 +1,10 @@
-
-reflex==0.8.17
+fastapi
+uvicorn
+mysql-connector-python
+google-generativeai
+google-auth-oauthlib
+google-api-python-client
+python-dotenv
+Pillow
+python-multipart
+boto3
