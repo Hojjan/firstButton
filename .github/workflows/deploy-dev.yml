@@ -29,7 +29,8 @@ jobs:
             fi
 
             cd "$APP_DIR"
-            git pull origin develop
+            git fetch origin develop
+            git reset --hard origin/develop
 
             # .env를 Day_One/으로 복사 (docker-compose가 읽을 수 있도록)
             cp .env Day_One/.env 2>/dev/null || true
