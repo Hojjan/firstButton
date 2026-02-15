@@ -23,7 +23,7 @@ jobs:
               mkdir -p "$APP_DIR"
               cd "$APP_DIR"
               git init
-              git remote add origin https://github.com/first-button/first_button.git
+              git remote add origin https://github.com/first-button/Day_One.git
               git fetch origin develop
               git checkout -b develop origin/develop
             fi
