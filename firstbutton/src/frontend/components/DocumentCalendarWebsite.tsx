@@ -677,14 +677,14 @@ export function DocumentCalendarWebsite({ language, onLanguageChange, onNavigate
               <div className="p-4 border-t bg-slate-50 flex items-center gap-4">
                 <div className="flex-1 min-w-0">
                   {isUploading && (
-                    <div className="flex items-center gap-3">
-                      <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-orange-100">
+                    <div className="flex items-center">
+                      <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-orange-100" style={{ marginRight: '28px' }}>
                         <div
                           className="h-full rounded-full bg-orange-500 transition-all duration-500 ease-out"
                           style={{ width: `${uploadProgress}%` }}
                         />
                       </div>
-                      <span className="w-10 text-right text-xs font-semibold text-orange-600 shrink-0">
+                      <span className="w-14 text-right text-xs font-semibold text-orange-600 shrink-0">
                         {uploadProgress}%
                       </span>
                     </div>
