@@ -17,7 +17,6 @@ from config import load_env
 
 load_env()
 
-SCOPES = ["https://www.googleapis.com/auth/calendar"]
 GEMINI_API_KEY = os.getenv("GOOGLE_GEMINI_API")
 
 genai.configure(api_key=GEMINI_API_KEY)

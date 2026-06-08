@@ -11,7 +11,6 @@ import photoTakingImage from "../assets/photo-taking.jpg";
 
 
 interface DocumentCalendarWebsiteProps {
-  onNavigateToGuide?: () => void;
   language: 'ko' | 'en';
   onLanguageChange?: (lang: 'ko' | 'en') => void;
   onNavigateToAbout?: () => void;
@@ -70,15 +69,15 @@ const translations = {
 const CALENDAR_COLORS: Record<string, { name: string; hex: string }> = {
   "1": { name: "Lavender", hex: "#7986CB" },
   "2": { name: "Sage", hex: "#33B679" },
-  "3": { name: "Grape", hex: "#8E24AA" },
+  "3": { name: "Purple", hex: "#8E24AA" },
   "4": { name: "Flamingo", hex: "#E67C73" },
-  "5": { name: "Banana", hex: "#F6BF26" },
-  "6": { name: "Tangerine", hex: "#F4511E" },
-  "7": { name: "Peacock", hex: "#039BE5" },
-  "8": { name: "Graphite", hex: "#616161" },
+  "5": { name: "Yellow", hex: "#F6BF26" },
+  "6": { name: "Orange", hex: "#F4511E" },
+  "7": { name: "Sky Blue", hex: "#039BE5" },
+  "8": { name: "Gray", hex: "#616161" },
   "9": { name: "Blueberry", hex: "#3F51B5" },
-  "10": { name: "Basil", hex: "#0B8043" },
-  "11": { name: "Tomato", hex: "#D50000" },
+  "10": { name: "Green", hex: "#0B8043" },
+  "11": { name: "Red", hex: "#D50000" },
 };
 
 // 파일 정보 타입 정의
@@ -98,6 +97,8 @@ export function DocumentCalendarWebsite({ language, onLanguageChange, onNavigate
   const [urlInput, setUrlInput] = useState("");
   const [urlList, setUrlList] = useState<{ url: string; color: string }[]>([]);
   const [isScrapingUrl, setIsScrapingUrl] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const t = translations[language];
 
   // 브라우저 쿠키에 user_email이 있는지 확인 (HttpOnly가 아닐 경우)
@@ -155,6 +156,7 @@ export function DocumentCalendarWebsite({ language, onLanguageChange, onNavigate
     }));
 
     setSelectedFiles(newFiles);
+    setUploadProgress(0);
     setIsModalOpen(true); // 파일 선택 즉시 모달 띄우기
     
     // 같은 파일 재선택 가능하도록 input 초기화
@@ -170,6 +172,8 @@ export function DocumentCalendarWebsite({ language, onLanguageChange, onNavigate
 
   // 3. 목록에서 파일 삭제 핸들러
   const handleRemoveFile = (index: number) => {
+    if (isUploading) return;
+
     setSelectedFiles(prev => {
       const newFiles = prev.filter((_, i) => i !== index);
       if (newFiles.length === 0) setIsModalOpen(false); // 다 지우면 창 닫기
@@ -179,23 +183,44 @@ export function DocumentCalendarWebsite({ language, onLanguageChange, onNavigate
 
   // 4. "등록하기" 버튼 클릭 시 (백엔드 전송)
   // [Celery] 태스크 상태 polling
-  const pollTaskStatus = async (taskId: string): Promise<{ status: string; count?: number; message?: string }> => {
+  const pollTaskStatus = async (
+    taskId: string,
+    fileIndex?: number,
+    totalFiles?: number
+  ): Promise<{ status: string; count?: number; message?: string; progress?: number }> => {
     while (true) {
       await new Promise((resolve) => setTimeout(resolve, 2000));
       const res = await fetch(`/api/schedule/upload/status/${taskId}`, {
         credentials: "include",
       });
       const data = await res.json();
+
+      if (typeof data.progress === "number" && fileIndex !== undefined && totalFiles) {
+        const taskProgress = Math.max(0, Math.min(100, data.progress));
+        const overallProgress = Math.round(
+          ((fileIndex + taskProgress / 100) / totalFiles) * 100
+        );
+        setUploadProgress(overallProgress);
+      }
+
       if (data.status !== "processing") return data;
     }
   };
 
   // [Celery] 비동기 업로드 — 즉시 task_id 받고 polling
   const handleFinalUpload = async () => {
-    if (selectedFiles.length === 0) return;
+    if (selectedFiles.length === 0 || isUploading) return;
+
+    setIsUploading(true);
+    setUploadProgress(0);
+
+    const totalFiles = selectedFiles.length;
 
     try {
-      for (const item of selectedFiles) {
+      for (const [index, item] of selectedFiles.entries()) {
+        const baseProgress = Math.round((index / totalFiles) * 100);
+        setUploadProgress(baseProgress);
+
         const formData = new FormData();
         formData.append("uploaded_file", item.file);
         formData.append("event_color", item.color);
@@ -216,20 +241,26 @@ export function DocumentCalendarWebsite({ language, onLanguageChange, onNavigate
         }
 
         const { task_id } = await response.json();
-        const result = await pollTaskStatus(task_id);
+        const result = await pollTaskStatus(task_id, index, totalFiles);
 
         if (result.status === "error") {
           throw new Error(result.message || `${item.file.name} 처리 실패`);
         }
+
+        setUploadProgress(Math.round(((index + 1) / totalFiles) * 100));
       }
 
+      setUploadProgress(100);
       alert("모든 일정이 성공적으로 등록되었습니다!");
       setIsModalOpen(false);
       setSelectedFiles([]);
+      setUploadProgress(0);
 
     } catch (error) {
       console.error(error);
       alert("일부 파일 처리에 실패했습니다.");
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -581,7 +612,11 @@ export function DocumentCalendarWebsite({ language, onLanguageChange, onNavigate
                   <FileText className="w-5 h-5 mr-2" />
                   선택된 파일 목록
                 </h3>
-                <button onClick={() => setIsModalOpen(false)} className="hover:bg-orange-600 p-1 rounded-full transition">
+                <button
+                  onClick={() => setIsModalOpen(false)}
+                  disabled={isUploading}
+                  className="hover:bg-orange-600 p-1 rounded-full transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -614,6 +649,7 @@ export function DocumentCalendarWebsite({ language, onLanguageChange, onNavigate
                       <select
                         value={item.color}
                         onChange={(e) => handleColorChange(index, e.target.value)}
+                        disabled={isUploading}
                         className="text-sm border rounded px-2 py-1 bg-white focus:ring-2 focus:ring-orange-500 outline-none cursor-pointer"
                         title="캘린더 색상"
                         style={{ color: CALENDAR_COLORS[item.color]?.hex }}
@@ -625,7 +661,8 @@ export function DocumentCalendarWebsite({ language, onLanguageChange, onNavigate
 
                       <button
                         onClick={() => handleRemoveFile(index)}
-                        className="text-slate-400 hover:text-red-500 transition p-1"
+                        disabled={isUploading}
+                        className="text-slate-400 hover:text-red-500 transition p-1 disabled:opacity-40 disabled:cursor-not-allowed"
                         title="파일 삭제"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -633,17 +670,36 @@ export function DocumentCalendarWebsite({ language, onLanguageChange, onNavigate
                     </div>
                   </div>
                 ))}
+
               </div>
 
               {/* 모달 하단 버튼 */}
-              <div className="p-4 border-t bg-slate-50 flex justify-end space-x-3">
-                <Button variant="ghost" onClick={() => setIsModalOpen(false)}>
-                  취소
-                </Button>
-                <Button className="bg-orange-500 hover:bg-orange-600" onClick={handleFinalUpload}>
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  일정 등록하기
-                </Button>
+              <div className="p-4 border-t bg-slate-50 flex items-center gap-4">
+                <div className="flex-1 min-w-0">
+                  {isUploading && (
+                    <div className="flex items-center gap-3">
+                      <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-orange-100">
+                        <div
+                          className="h-full rounded-full bg-orange-500 transition-all duration-500 ease-out"
+                          style={{ width: `${uploadProgress}%` }}
+                        />
+                      </div>
+                      <span className="w-10 text-right text-xs font-semibold text-orange-600 shrink-0">
+                        {uploadProgress}%
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end space-x-3 shrink-0">
+                  <Button variant="ghost" onClick={() => setIsModalOpen(false)} disabled={isUploading}>
+                    취소
+                  </Button>
+                  <Button className="bg-orange-500 hover:bg-orange-600" onClick={handleFinalUpload} disabled={isUploading}>
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    {isUploading ? "등록 중..." : "일정 등록하기"}
+                  </Button>
+                </div>
               </div>
             </motion.div>
           </div>

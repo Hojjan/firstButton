@@ -86,8 +86,11 @@ def get_valid_creds(email: str):
 def process_upload(self, save_path, file_extension, base_name, event_color, user_email):
     CONCURRENT_UPLOADS.inc()
     try:
+        self.update_state(state="PROGRESS", meta={"progress": 10})
+
         # 1. AI 분석
         with STEP_DURATION.labels(step='ai_analysis').time():
+            self.update_state(state="PROGRESS", meta={"progress": 30})
             ai_response = integrated_file_reader(
                 file_path=save_path,
                 file_type=file_extension,
@@ -97,20 +100,23 @@ def process_upload(self, save_path, file_extension, base_name, event_color, user
 
         # 2. 이벤트 파싱
         with STEP_DURATION.labels(step='parse_events').time():
+            self.update_state(state="PROGRESS", meta={"progress": 70})
             events_list = parse_response_to_events(ai_response)
 
         if not events_list:
-            return {"status": "error", "message": "일정을 찾지 못했습니다."}
+            return {"status": "error", "progress": 100, "message": "일정을 찾지 못했습니다."}
 
         # 3. Google Calendar 등록
+        self.update_state(state="PROGRESS", meta={"progress": 85})
         creds = get_valid_creds(user_email)
         if not creds:
-            return {"status": "error", "message": "인증 정보를 찾을 수 없습니다. 다시 로그인해 주세요."}
+            return {"status": "error", "progress": 100, "message": "인증 정보를 찾을 수 없습니다. 다시 로그인해 주세요."}
 
         with STEP_DURATION.labels(step='calendar_register').time():
+            self.update_state(state="PROGRESS", meta={"progress": 92})
             google_calendar(events_list, creds)
 
-        return {"status": "success", "count": len(events_list), "user": user_email}
+        return {"status": "success", "progress": 100, "count": len(events_list), "user": user_email}
 
     except Exception as e:
         UPLOAD_ERRORS.labels(error_type=type(e).__name__).inc()
@@ -127,8 +133,11 @@ def process_upload(self, save_path, file_extension, base_name, event_color, user
 def process_scrape(self, url, file_name, event_color, user_email):
     CONCURRENT_UPLOADS.inc()
     try:
+        self.update_state(state="PROGRESS", meta={"progress": 10})
+
         # 1. 웹 스크래핑 + AI 분석
         with STEP_DURATION.labels(step='web_scrape_ai').time():
+            self.update_state(state="PROGRESS", meta={"progress": 30})
             ai_response = scrape_webpage_schedule(
                 url=url,
                 file_name=file_name,
@@ -136,24 +145,27 @@ def process_scrape(self, url, file_name, event_color, user_email):
             )
 
         if ai_response.startswith("Error:"):
-            return {"status": "error", "message": ai_response}
+            return {"status": "error", "progress": 100, "message": ai_response}
 
         # 2. 이벤트 파싱
         with STEP_DURATION.labels(step='parse_events').time():
+            self.update_state(state="PROGRESS", meta={"progress": 70})
             events_list = parse_response_to_events(ai_response)
 
         if not events_list:
-            return {"status": "error", "message": "일정을 찾지 못했습니다."}
+            return {"status": "error", "progress": 100, "message": "일정을 찾지 못했습니다."}
 
         # 3. Google Calendar 등록
+        self.update_state(state="PROGRESS", meta={"progress": 85})
         creds = get_valid_creds(user_email)
         if not creds:
-            return {"status": "error", "message": "인증 정보를 찾을 수 없습니다. 다시 로그인해 주세요."}
+            return {"status": "error", "progress": 100, "message": "인증 정보를 찾을 수 없습니다. 다시 로그인해 주세요."}
 
         with STEP_DURATION.labels(step='calendar_register').time():
+            self.update_state(state="PROGRESS", meta={"progress": 92})
             google_calendar(events_list, creds)
 
-        return {"status": "success", "count": len(events_list), "user": user_email}
+        return {"status": "success", "progress": 100, "count": len(events_list), "user": user_email}
 
     except Exception as e:
         UPLOAD_ERRORS.labels(error_type=type(e).__name__).inc()
