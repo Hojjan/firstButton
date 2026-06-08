@@ -2,7 +2,7 @@
 import os
 import shutil
 import uuid
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Cookie, Body
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Cookie
 from celery.result import AsyncResult
 from prometheus_client import Histogram
 from pydantic import BaseModel
@@ -84,10 +84,14 @@ async def get_upload_status(task_id: str):
     result = AsyncResult(task_id, app=celery)
 
     if result.state == "PENDING":
-        return {"status": "processing"}
+        return {"status": "processing", "progress": 0}
+    elif result.state == "PROGRESS":
+        meta = result.info or {}
+        return {"status": "processing", "progress": meta.get("progress", 0)}
     elif result.state == "SUCCESS":
-        return result.result
+        data = result.result or {}
+        return {**data, "progress": data.get("progress", 100)}
     elif result.state == "FAILURE":
-        return {"status": "error", "message": str(result.info)}
+        return {"status": "error", "progress": 100, "message": str(result.info)}
     else:
-        return {"status": "processing"}
+        return {"status": "processing", "progress": 0}
